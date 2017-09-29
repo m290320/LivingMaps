@@ -46,8 +46,6 @@ bioclim_max_temp <- "Bioclim/Landscape/bio5_bioclim_max_temp.tif"
 bioclim_min_temp <- "Bioclim/Landscape/bio6_bioclim_min_temp.tif"
 bioclim_annual_rainfall <- "Bioclim/Landscape/bio12_bioclim_annual_rainfall.tif"
 moorlandline_dist <- "MoorlandLine/Landscape/MoorlandLineR_clip_prox.tif"
-CHROME_arable <- "CROME_Generalised/Landscape_CROME_Generalised_Arable.tif"
-CHROME_trees <- "CROME_Generalised/Landscape_CROME_Generalised_Trees.tif"
 
 
 list.rasters <- list(S2_summer_blue=c(S2_summer, 1),
@@ -170,9 +168,7 @@ list.rasters <- list(S2_summer_blue=c(S2_summer, 1),
                      min_temp=c(bioclim_min_temp,1),
                      max_temp=c(bioclim_max_temp,1),
                      annual_rainfall=c(bioclim_annual_rainfall,1),
-                     moorlandline_dist=c(moorlandline_dist,1),
-                     CHROME_arable=c(CHROME_arable,1, "mode"),
-                     CHROME_trees=c(CHROME_trees,1, "mode"))
+                     moorlandline_dist=c(moorlandline_dist,1))
 
 
 ### Zonal Stats for Segmented Polygons ################################################################
