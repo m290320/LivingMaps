@@ -137,9 +137,8 @@ list.rasters <- list(S2_summer_blue=c(S2_summer, 1),
                      min_temp=c(bioclim_min_temp,1),
                      max_temp=c(bioclim_max_temp,1),
                      annual_rainfall=c(bioclim_annual_rainfall,1),
-                     moorlandline_dist=c(moorlandline_dist,1),
-                     CHROME_arable=c(CHROME_arable,1, "mode"),
-                     CHROME_trees=c(CHROME_trees,1, "mode"))
+                     moorlandline_dist=c(moorlandline_dist,1))
+
 
 
 ### Zonal Stats for Segmented Polygons ################################################################
