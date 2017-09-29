@@ -45,8 +45,6 @@ bioclim_max_temp <- "Bioclim/Catchment/bio5_bioclim_max_temp.tif"
 bioclim_min_temp <- "Bioclim/Catchment/bio6_bioclim_min_temp.tif"
 bioclim_annual_rainfall <- "Bioclim/Catchment/bio12_bioclim_annual_rainfall.tif"
 moorlandline_dist <- "MoorlandLine/Catchment/MoorlandLineR_clip_prox.tif"
-CHROME_arable <- "CROME_Generalised/Cumbria_CROME_Generalised_Arable.tif"
-CHROME_trees <- "CROME_Generalised/Cumbria_CROME_Generalised_Trees.tif"
 
 
 list.rasters <- list(S2_summer_blue=c(S2_summer, 1),
