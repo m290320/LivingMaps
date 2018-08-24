@@ -355,7 +355,7 @@ Median <- function(df, var)
    names(dt)[which(names(dt)==var)] <- "value" # rename var field as order cannot take dynamic column names
    dt <- dt[order(ID, value)]
    dt <- dt[, cum := cumsum(freq), by=ID]
-   dt <- dt[, sum := sum(freq), by=ID]
+   dt <- dt[, sum := sum(freq), by=ID, na.rm=T]
    df <- sqldf(paste("select ID, min(value) as '", var, "' from dt where cum/sum >= 0.5 group by ID", sep=""))
    return(df)
 }
