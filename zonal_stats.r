@@ -45,6 +45,16 @@
 # 1 February 2017
 #   - Added test that raster list is valid prior to processing in zonal_stats_raster
 #
+# 24 August 2018
+#   - Fixed problem with missing values when calculating statistics for segments split across tiles
+# 
+# 29 August 2018
+#   - Added the ability to calculate multiple statistics per raster image rather than having to process each statistic separately
+#     This improves performance by approx 10%, 30% and 45% for 2,3 and 4 statistics respectively.
+#
+#     list.rasters <- list(layer_name=c(path_to_raster, band, stat1, stat2, stat3), ...)
+
+
 
 library(foreach)
 library(doSNOW)
@@ -123,7 +133,7 @@ for (i in 0:((length(segmentation.tiles)%/%clusters)-1))
   seg.tiles.cluster <- segmentation.tiles[imin:imax]
   print(paste("Rasterizing", imin, "to", imax, "of", length(segmentation.tiles)))
   
-  st <- system.time({
+  #st <- system.time({
     
   seg.raster.tiles.cluster <- foreach(seg.tile = seg.tiles.cluster, .packages="raster", .noexport=c("segmentation", "segmentation.tiles")) %dopar%   
   {    
@@ -146,8 +156,7 @@ for (i in 0:((length(segmentation.tiles)%/%clusters)-1))
     seg.part.raster
   }
 
-  }) # End system.time     
-print(paste("Elapsed:", round(st[[3]],1),"seconds"))
+  #}) # End system.time     
 
 # Append to rasterized tiles to output
 seg.raster.tiles <- c(seg.raster.tiles, seg.raster.tiles.cluster) 
@@ -229,12 +238,15 @@ zonal_stats_raster.tiles <- function(seg.raster.tiles, list.rasters, clusters)
       
       fn.merge <- function(x,y){merge(x,y,by="ID", all=T)}
       zonal_stats_seg.part <- foreach(j=1:length(list.rasters), .combine=fn.merge, .packages=c("raster","rgdal"), .export=c("Mode","Median")) %dopar%
+      #zonal_stats_seg.part <- foreach(j=1:length(list.rasters), .combine=fn.merge, .packages=c("raster","rgdal"), .export=c("Mode","Median")) %do%
       {        
-        file <- list.rasters[[j]][1]
-        band <- list.rasters[[j]][2]
+        list.raster <- list.rasters[[j]]   
+         
+        file <- list.raster[1]
+        band <- list.raster[2]
         
         fun <- "mean"
-        if (length(list.rasters[[j]]) > 2) {fun <- list.rasters[[j]][3]}
+        if (length(list.raster) > 2) {fun <- list.raster[3:length(list.raster)]}
         
         
         # Only read in required subset of raster
@@ -256,29 +268,47 @@ zonal_stats_raster.tiles <- function(seg.raster.tiles, list.rasters, clusters)
           if (!is.null(intersect(extent(r), extent(seg.raster.tile))))
           {                        
             r <- resample(r, seg.raster.tile, method="ngb") # Resample to match the rasterised segmented polygons
-            
-            values <- switch(fun,
-               mean = zonal(r, seg.raster.tile), 
-               mode = zonal(r, seg.raster.tile, fun=Mode),  
-               sd = zonal(r, seg.raster.tile, fun=sd), 
-               median = zonal(r, seg.raster.tile, fun=median), 
-               max = zonal(r, seg.raster.tile, fun=max), 
-               min = zonal(r, seg.raster.tile, fun=min)) 
-            
-            stats <- data.frame(values)
-            names(stats) <- c("ID",names(list.rasters)[j])      
+         
+            stats.all <- NULL
+            for(f in fun)
+            {
+               values <- switch(f,
+                  mean = zonal(r, seg.raster.tile), 
+                  mode = zonal(r, seg.raster.tile, fun=Mode),  
+                  sd = zonal(r, seg.raster.tile, fun=sd), 
+                  median = zonal(r, seg.raster.tile, fun=median), 
+                  max = zonal(r, seg.raster.tile, fun=max), 
+                  min = zonal(r, seg.raster.tile, fun=min)) 
+               
+                  stats <- data.frame(values)
+                  
+                  name <- paste(names(list.rasters)[j],f, sep="_")
+                  names(stats) <- c("ID",name)      
+                  
+                  # If no values returned create an empty dataframe
+                  if (is.null(stats))
+                  {
+                     seg.ids <- unique(seg.raster.tile)
+                     stats <- data.frame("ID"=seg.ids, rep(NA, length(seg.ids)))
+                     names(stats) <- c("ID",name)      
+                  }   
+                  
+                  # Append the values for each statistic to the data frame
+                  if (is.null(stats.all))
+                  {
+                     stats.all <- stats
+                  } else
+                  {
+                     stats.all <- cbind(stats.all, stats[2])
+                  }
+                  
+            }
           }
         }
         
-        if (is.null(stats))
-        {
-          seg.ids <- unique(seg.raster.tile)
-          stats <- data.frame("ID"=seg.ids, rep(NA, length(seg.ids)))
-          names(stats) <- c("ID",names(list.rasters)[j])      
-        }    
         
         #Return the stats object from the foreach loop
-        stats
+        stats.all
       }
       
       # Append the frequency of cells to the table
@@ -293,31 +323,36 @@ zonal_stats_raster.tiles <- function(seg.raster.tiles, list.rasters, clusters)
   
   # Merge duplicate rows
   zonal_stats_seg.unique <- NULL
-  #for (var in names(zonal_stats_seg)[2:(ncol(zonal_stats_seg)-1)])
+  
   for (i in 1:length(list.rasters))
   {
-      var <- names(list.rasters)[i]
-      fun <- "mean"
-      if (length(list.rasters[[i]]) > 2) {fun <- list.rasters[[i]][3]}
+      list.raster <- list.rasters[[i]]   
      
-     # Calculate weighted mean etc. for segmented polygons split across tiles.  
-     # For median and sd, these cannot be reversed so use the median value 
-   
-      zonal_stats.var <- switch(fun,
-          mean = sqldf(paste("select ID, sum(`",var,"` * freq)/sum(freq) as `", var, "` from zonal_stats_seg group by ID", sep="")),
-          mode = sqldf(paste("select ID, `",var,"` as `", var, "`, max(freq) from (select ID, `",var,"`, sum(freq) as freq from zonal_stats_seg group by ID, `",var,"`) group by ID", sep="")),
-          min = sqldf(paste("select ID, max(`",var,"`) as `", var, "` from zonal_stats_seg group by ID", sep="")),
-          max = sqldf(paste("select ID, min(`",var,"`) as `", var, "` from zonal_stats_seg group by ID", sep="")),
-          median = Median(zonal_stats_seg, var),
-          sd = Median(zonal_stats_seg, var)
-      )
+      fun <- "mean"
+      if (length(list.raster) > 2) {fun <- list.raster[3:length(list.raster)]}
       
-      if (is.null(zonal_stats_seg.unique))
+      for (f in fun)
       {
-         zonal_stats_seg.unique <- zonal_stats.var[1:2]   
-      } else
-      {
-        zonal_stats_seg.unique <- data.frame(zonal_stats_seg.unique, zonal_stats.var[2])
+        # Calculate weighted mean etc. for segmented polygons split across tiles.  
+        # For median and sd, these cannot be reversed so use the median value 
+         
+         var <- paste(names(list.rasters)[i],f, sep="_")
+         
+         zonal_stats.var <- switch(f,
+             mean = sqldf(paste0("select ID, sum(`",var,"` * freq)/sum(freq) as `", var, "` from zonal_stats_seg group by ID")),
+             mode = sqldf(paste0("select ID, `",var,"` as `", var, "`, max(freq) from (select ID, `",var,"`, sum(freq) as freq from zonal_stats_seg group by ID, `",var,"`) group by ID")),
+             min = sqldf(paste0("select ID, max(`",var,"`) as `", var, "` from zonal_stats_seg group by ID")),
+             max = sqldf(paste0("select ID, min(`",var,"`) as `", var, "` from zonal_stats_seg group by ID")),
+             median = Median(zonal_stats_seg, var),
+             sd = Median(zonal_stats_seg, var)
+         )
+         if (is.null(zonal_stats_seg.unique))
+         {
+            zonal_stats_seg.unique <- zonal_stats.var[1:2]   
+         } else
+         {
+            zonal_stats_seg.unique <- data.frame(zonal_stats_seg.unique, zonal_stats.var[2])
+         }
       }
   }
   
@@ -353,9 +388,10 @@ Median <- function(df, var)
 {
    dt <- data.table(df)
    names(dt)[which(names(dt)==var)] <- "value" # rename var field as order cannot take dynamic column names
+   #dt <- subset(dt, !is.na(value))
    dt <- dt[order(ID, value)]
    dt <- dt[, cum := cumsum(freq), by=ID]
-   dt <- dt[, sum := sum(freq), by=ID, na.rm=T]
+   dt <- dt[, sum := sum(freq, na.rm=T), by=ID] # na.rm=T
    df <- sqldf(paste("select ID, min(value) as '", var, "' from dt where cum/sum >= 0.5 group by ID", sep=""))
    return(df)
 }
