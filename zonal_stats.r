@@ -53,6 +53,9 @@
 #     This improves performance by approx 10%, 30% and 45% for 2,3 and 4 statistics respectively.
 #
 #     list.rasters <- list(layer_name=c(path_to_raster, band, stat1, stat2, stat3), ...)
+#
+# 24 September 2018
+#   - Tiling now aligns to the segmentation raster cells
 
 
 
@@ -198,10 +201,15 @@ zonal_stats_raster <- function(segmentation, list.rasters, clusters=8, tiles=15)
     # Create an extent for the current tile      
     ix = tile %% tiles
     iy = tile %/% tiles
-    x1 <- seg.ext[1] + (seg.ext[2] - seg.ext[1])/tiles * ix 
-    x2 <- x1 + (seg.ext[2] - seg.ext[1])/tiles
-    y1 <- seg.ext[3] + (seg.ext[4] - seg.ext[3])/tiles * iy
-    y2 <- y1 + (seg.ext[4] - seg.ext[3])/tiles
+    
+    # Round tile width to the nearest pixel
+    tile.width <- (seg.ext[2] - seg.ext[1])*ceiling(segmentation@ncols/tiles)/segmentation@ncols
+    tile.height <- (seg.ext[4] - seg.ext[3])*ceiling(segmentation@nrows/tiles)/segmentation@nrows
+        
+    x1 <- seg.ext[1] + tile.width * ix 
+    x2 <- x1 + tile.width
+    y1 <- seg.ext[3] + tile.height * iy
+    y2 <- y1 + tile.height
     extent.tile <- extent(x1,x2, y1, y2)
     
     seg.raster.tile <- crop(segmentation, extent.tile)
