@@ -1,19 +1,23 @@
 #########################################################################################################
 #
-# Function to calculate zonal stats from rasters for a set of polygons
+# Function to calculate zonal stats from rasters for a set of polygons using the velox package.
 #
-# segmentation - segmented polygons or raster layer for which zonal statistics are to be calculated
-# list.rasters - a list containing a vector of format:
-#                > list.rasters <- list(layer_name=c(path_to_raster, band, stat), ...)
+# Arguments:
 #
-# tiles        - number of columns and rows for tiling data
+#   segmentation - Polygon layer (opened with st_read) for which zonal statistics are to be calculated.
+#                  The layer must have a column named ID containing unique values.
 #
-# Returns a table containing the zonal statistics for each polygon.  The ID field references the original 
-# segmented object id.  Column names are taken from list.rasters
+#   list.rasters - a list containing a vector of format:
+#                  list(layer_name=c(path_to_raster, stat, band1[, band2, ...]), ...)
 #
-# Author:       Richard Alexander, Natural England
+#   tiles        - number of columns and rows for tiling of the raster layers, e.g. tiles=2 will have 2x2 tiles.
+#                  Tiling is required for handling large rasters.  The default value tiles=1 is for no tiling.
 #
-
+# Returns a table  zonal statistics for each polygon.  The ID field references the original polygon.
+# segmented object id.  Column names are taken from list.rasters appended with statistic and band.
+#
+# Author:       Richard Alexander, Natural England, 26 October 2018
+#
 
 library(foreach)
 library(sf)
@@ -101,11 +105,11 @@ zonal.stats.tiles <- function(segmentation.tiles, list.rasters)
      
      print(paste("Zonal stats:", tile, "of", length(segmentation.tiles)))
      
-     zonal.stats.tile <- NULL
+     zonal.stats.tile <- data.frame(ID=segmentation.tile$ID)
      if(!is.null(segmentation.tile))
      {
         # Iterate through each of the rasters to be processed
-        pb <- txtProgressBar(1, length(list.rasters))
+        pb <- txtProgressBar(0, length(list.rasters))
         for (i in 1:length(list.rasters)) 
         {
            list.raster <- list.rasters[[i]]   
@@ -137,7 +141,10 @@ zonal.stats.tiles <- function(segmentation.tiles, list.rasters)
               vx <- velox(s)       
               
               # Extract values for each statistic
-              zonal.stats.tile <- vx$extract(segmentation.tile, eval(parse(text=fun)))
+              zonal.stats.layer <- vx$extract(segmentation.tile, eval(parse(text=fun)))
+              
+              # Add ID column
+              zonal.stats.layer <- data.frame(zonal.stats.layer)
               
               # Rename columns
               for (j in 1:length(bands))
@@ -145,11 +152,10 @@ zonal.stats.tiles <- function(segmentation.tiles, list.rasters)
                  name <- paste0(names(list.rasters)[i],"_",fun)
                  if (length(bands) > 1) name <- paste0(name, "_band", j)
                  
-                 colnames(zonal.stats.tile)[j] <- name
+                 colnames(zonal.stats.layer)[j] <- name
               }
               
-              # Add ID column
-              zonal.stats.tile <- data.frame(ID=segmentation.tile$ID, zonal.stats.tile)
+              zonal.stats.tile <- cbind(zonal.stats.tile, zonal.stats.layer)   
               
            }
            setTxtProgressBar(pb, i)
